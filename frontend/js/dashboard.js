@@ -550,6 +550,23 @@ window.closeExpenseDetailsModal = function() {
   if (modal) modal.style.display = 'none';
 };
 
+// Setup backdrop click and escape key listener for expense modal
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('expense-details-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        closeExpenseDetailsModal();
+      }
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeExpenseDetailsModal();
+    }
+  });
+});
+
 /**
  * Load Append-Only Audit Trail Logs
  */
