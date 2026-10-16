@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AuditAI Dashboard – Real-time Expense Auditing, Anomaly Analysis, and Risk Governance Platform.">
-  <title>Dashboard – AuditAI Expense & Fraud Platform</title>
+  <meta name="description" content="AuditAI Dashboard – Enterprise Expense Auditing, Multi-Level Approvals, Anomaly Analysis, and Risk Governance Platform.">
+  <title>Dashboard – AuditAI Enterprise Platform</title>
 
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,6 +16,9 @@
 
   <!-- Chart.js via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+
+  <!-- Tesseract.js via CDN for Client-Side OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
@@ -30,7 +33,7 @@
 
   <div class="dashboard-container">
 
-    <!-- Collapsible Sidebar -->
+    <!-- Collapsible Sidebar with RBAC-controlled Nav -->
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-header">
         <a href="index.html" class="brand-logo">
@@ -50,17 +53,25 @@
           <i class="fa-solid fa-wand-magic-sparkles"></i>
           <span>Expense Audit</span>
         </a>
-        <a href="#analytics-section" class="sidebar-link">
-          <i class="fa-solid fa-chart-pie"></i>
-          <span>Analytics</span>
-        </a>
-        <a href="#alerts-section" class="sidebar-link">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span>Fraud Alerts</span>
+        <a href="#approvals-section" id="nav-approvals" class="sidebar-link">
+          <i class="fa-solid fa-clipboard-check"></i>
+          <span>Approvals Queue</span>
         </a>
         <a href="#transactions-section" class="sidebar-link">
           <i class="fa-solid fa-table-list"></i>
           <span>Transactions</span>
+        </a>
+        <a href="#alerts-section" id="nav-alerts" class="sidebar-link">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>Fraud Alerts</span>
+        </a>
+        <a href="#analytics-section" class="sidebar-link">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Analytics</span>
+        </a>
+        <a href="#audit-trail-section" id="nav-audit-trail" class="sidebar-link">
+          <i class="fa-solid fa-receipt"></i>
+          <span>Audit Trail</span>
         </a>
         <a href="index.html" class="sidebar-link">
           <i class="fa-solid fa-house"></i>
@@ -79,7 +90,7 @@
     <!-- Main Content Area -->
     <div class="main-wrapper">
 
-      <!-- Top Navigation Bar -->
+      <!-- Top Navigation Bar with User Menu & Logout -->
       <header class="topbar">
         <div class="topbar-left">
           <button id="sidebar-toggle" class="toggle-sidebar-btn" title="Toggle Sidebar">
@@ -87,7 +98,7 @@
           </button>
           <div class="topbar-search-box">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="topbar-search" placeholder="Search transactions, employees, IDs...">
+            <input type="text" id="topbar-search" placeholder="Search claims, employees, IDs...">
           </div>
         </div>
 
@@ -102,13 +113,18 @@
             <span>New Audit</span>
           </a>
 
+          <!-- User Menu -->
           <div class="user-profile-badge">
-            <div class="avatar">AI</div>
+            <div class="avatar" id="user-profile-avatar">AI</div>
             <div class="profile-info text-sm hidden-sm" style="font-size: 0.85rem;">
-              <strong class="block">Lead Auditor</strong>
-              <small class="text-muted">Compliance Dept</small>
+              <strong class="block" id="user-profile-name">Loading...</strong>
+              <small class="text-muted" id="user-profile-role">EMPLOYEE</small>
             </div>
           </div>
+
+          <button id="btn-logout" class="btn btn-secondary btn-sm" title="Log Out" style="margin-left: 6px;">
+            <i class="fa-solid fa-arrow-right-from-bracket text-danger"></i>
+          </button>
         </div>
       </header>
 
@@ -117,44 +133,40 @@
 
         <!-- Section 1: KPI Stat Cards -->
         <section id="overview" class="stats-grid">
-          <!-- Total Claims -->
           <div class="glass-panel stat-card">
             <div class="stat-header">
               <span class="stat-title">Total Audited</span>
               <div class="stat-icon icon-blue"><i class="fa-solid fa-file-invoice-dollar"></i></div>
             </div>
             <div class="stat-value" id="stat-total-count">0</div>
-            <div class="stat-sub">Audited claims in system</div>
+            <div class="stat-sub">Audited claims in scope</div>
           </div>
 
-          <!-- Total Value -->
           <div class="glass-panel stat-card">
             <div class="stat-header">
               <span class="stat-title">Audited Volume</span>
               <div class="stat-icon icon-green"><i class="fa-solid fa-money-bill-wave"></i></div>
             </div>
             <div class="stat-value text-gradient" id="stat-total-amount">$0</div>
-            <div class="stat-sub">Cumulative claims value</div>
+            <div class="stat-sub">Cumulative expenditure value</div>
           </div>
 
-          <!-- Flagged High Risk -->
           <div class="glass-panel stat-card">
             <div class="stat-header">
               <span class="stat-title">Flagged / At-Risk</span>
               <div class="stat-icon icon-rose"><i class="fa-solid fa-shield-halved"></i></div>
             </div>
             <div class="stat-value text-danger" id="stat-flagged-count">0</div>
-            <div class="stat-sub">Requiring auditor review</div>
+            <div class="stat-sub">Requiring compliance review</div>
           </div>
 
-          <!-- Fraud Losses Prevented -->
           <div class="glass-panel stat-card">
             <div class="stat-header">
               <span class="stat-title">Money Saved</span>
               <div class="stat-icon icon-amber"><i class="fa-solid fa-piggy-bank"></i></div>
             </div>
             <div class="stat-value text-success" id="stat-money-saved">$0</div>
-            <div class="stat-sub">Recovered & stopped leaks</div>
+            <div class="stat-sub">Prevented losses & rejections</div>
           </div>
         </section>
 
@@ -165,8 +177,8 @@
               <i class="fa-solid fa-brain" style="font-size: 0.95rem;"></i>
             </div>
             <div>
-              <strong style="font-size: 0.95rem;">System-Wide Fraud Index</strong>
-              <p class="text-muted text-xs" style="font-size: 0.8rem;">Aggregated heuristic score across all employee submissions</p>
+              <strong style="font-size: 0.95rem;">Corporate Fraud & Policy Risk Index</strong>
+              <p class="text-muted text-xs" style="font-size: 0.8rem;">11-tier heuristic anomaly score computed across recent expense submissions</p>
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 16px; min-width: 260px;">
@@ -179,17 +191,39 @@
           </div>
         </div>
 
-        <!-- Section 2: Real-Time Audit Form & Circular Gauge Result -->
+        <!-- Section 2: Multi-Level Approvals Queue (Manager / Auditor / Admin) -->
+        <section id="approvals-section" class="glass-panel" style="padding: 24px; display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div class="brand-icon-box" style="width: 36px; height: 36px;">
+                <i class="fa-solid fa-clipboard-check"></i>
+              </div>
+              <div>
+                <h3 style="font-size: 1.2rem;">Multi-Level Approvals Queue</h3>
+                <small class="text-muted">Expenses awaiting decision for your governance role</small>
+              </div>
+            </div>
+            <span id="approvals-count-badge" class="risk-badge badge-medium">0 pending</span>
+          </div>
+
+          <div id="pending-approvals-container">
+            <div class="text-center py-6 text-muted">
+              <i class="fa-solid fa-spinner fa-spin"></i> Checking pending workflow approvals...
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 3: Expense Submission with Receipt OCR & Circular Gauge -->
         <section id="audit-form-section" class="audit-section-grid">
-          <!-- Audit Form -->
+          <!-- Audit Form with Receipt Upload -->
           <div class="glass-panel audit-form-card">
             <div class="form-header-badge">
               <i class="fa-solid fa-microchip"></i>
-              <span>Heuristic Risk Analyzer</span>
+              <span>11-Tier Heuristic Risk Analyzer</span>
             </div>
-            <h3 style="font-size: 1.25rem; margin-bottom: 6px;">Submit Expense for AI Audit</h3>
+            <h3 style="font-size: 1.25rem; margin-bottom: 6px;">Submit Claim for AI Audit</h3>
             <p class="text-muted text-sm mb-4" style="margin-bottom: 16px; font-size: 0.88rem;">
-              Submit a new claim to run the 5-layer fraud detection engine in real-time.
+              Upload an itemized receipt image (JPG/PNG) for automated in-browser OCR, or fill manually.
             </p>
 
             <!-- Quick Presets -->
@@ -210,10 +244,39 @@
             </div>
 
             <form id="expense-audit-form">
+              <!-- Receipt Upload with In-Browser OCR -->
+              <div style="margin-bottom: 18px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; display: block;">
+                  <i class="fa-solid fa-receipt text-primary"></i> Upload Receipt (In-Browser Tesseract.js OCR)
+                </label>
+                <div class="receipt-upload-box" onclick="document.getElementById('audit-receipt-file').click()">
+                  <i class="fa-solid fa-cloud-arrow-up text-primary text-xl mb-1 block"></i>
+                  <span class="text-sm block">Click or drop receipt (JPG, PNG - Max 5 MB)</span>
+                  <small class="text-muted text-xs">Client-side OCR extracts vendor, date, total & SHA-256 hash</small>
+                  <input type="file" id="audit-receipt-file" accept="image/png, image/jpeg, image/jpg" style="display: none;">
+                </div>
+
+                <!-- OCR Progress Indicator -->
+                <div id="ocr-progress-box" style="display: none; margin-top: 10px;">
+                  <div class="ocr-progress-container">
+                    <div id="ocr-progress-bar" class="ocr-progress-bar"></div>
+                  </div>
+                  <div id="ocr-status-text" class="text-xs text-muted font-mono">Initializing OCR...</div>
+                </div>
+
+                <!-- Receipt Preview Box -->
+                <div id="receipt-preview-container" style="display: none; margin-top: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 10px; text-align: center;">
+                  <img id="receipt-preview-img" class="receipt-preview-img" alt="Receipt preview">
+                  <button type="button" id="btn-remove-receipt" class="btn btn-outline-danger btn-sm" style="margin-top: 6px;">
+                    <i class="fa-solid fa-trash"></i> Remove Receipt
+                  </button>
+                </div>
+              </div>
+
               <div class="form-grid">
                 <div class="form-group">
                   <label for="audit-employee">Employee Name *</label>
-                  <input type="text" id="audit-employee" class="form-control" placeholder="e.g. Alex Rivera" required>
+                  <input type="text" id="audit-employee" class="form-control" placeholder="e.g. Sarah Jenkins" required>
                 </div>
 
                 <div class="form-group">
@@ -243,7 +306,7 @@
 
                 <div class="form-group">
                   <label for="audit-amount">Amount (USD $) *</label>
-                  <input type="number" id="audit-amount" class="form-control" step="0.01" min="0.01" placeholder="e.g. 3200.00" required>
+                  <input type="number" id="audit-amount" class="form-control font-mono font-bold" step="0.01" min="0.01" placeholder="e.g. 145.50" required>
                 </div>
 
                 <div class="form-group">
@@ -258,7 +321,7 @@
 
                 <div class="form-group col-span-2">
                   <label for="audit-description">Description & Business Justification *</label>
-                  <textarea id="audit-description" class="form-control" rows="2" placeholder="e.g. VIP client business dinner at downtown restaurant..." required></textarea>
+                  <textarea id="audit-description" class="form-control" rows="2" placeholder="e.g. Client dinner with enterprise partners..." required></textarea>
                 </div>
               </div>
 
@@ -279,13 +342,13 @@
               </div>
               <h4 style="font-size: 1.15rem; margin-bottom: 8px;">Awaiting Audit Submission</h4>
               <p class="text-muted text-sm" style="max-width: 280px; margin: 0 auto;">
-                Submit an expense or click any quick preset on the left to see the circular AI risk gauge in action.
+                Submit an expense or upload a receipt to trigger the real-time AI risk evaluation and view the animated score gauge.
               </p>
             </div>
 
             <div id="audit-result-card" style="display: none; width: 100%;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span id="result-status-pill" class="status-badge status-flagged">FLAGGED</span>
+                <span id="result-status-pill" class="status-badge status-pending">PENDING</span>
                 <span id="gauge-level-badge" class="risk-badge badge-high">High Risk</span>
               </div>
 
@@ -303,98 +366,27 @@
 
               <div id="result-summary-text" class="text-sm"></div>
 
+              <!-- Required Multi-Level Approval Chain Stepper -->
+              <div id="result-stepper-container"></div>
+
               <!-- Itemized Rule Reasons -->
               <div class="result-reasons-container">
                 <span class="text-xs text-muted font-semibold uppercase" style="letter-spacing: 0.5px;">Detected Rule Violations:</span>
                 <ul id="result-reasons-list" class="reasons-list"></ul>
               </div>
-
-              <!-- Action Buttons -->
-              <div style="display: flex; gap: 10px; margin-top: 18px;">
-                <button id="btn-result-reject" class="btn btn-outline-danger btn-sm" style="flex: 1;">
-                  <i class="fa-solid fa-ban"></i> Reject Claim
-                </button>
-                <button id="btn-result-approve" class="btn btn-outline-success btn-sm" style="flex: 1;">
-                  <i class="fa-solid fa-check"></i> Approve Claim
-                </button>
-              </div>
             </div>
           </div>
         </section>
 
-        <!-- Section 3: Visual Analytics Charts -->
-        <section id="analytics-section" class="charts-grid">
-          <!-- Monthly Trend Line Chart -->
-          <div class="glass-panel chart-card">
-            <div class="chart-header">
-              <div>
-                <h3 style="font-size: 1.1rem;">Expense Trajectory vs Flagged Losses</h3>
-                <small class="text-muted">6-month trendline of corporate expenditure vs fraud risk</small>
-              </div>
-              <span class="category-pill"><i class="fa-solid fa-chart-line"></i> Chart.js</span>
-            </div>
-            <div class="chart-container-box">
-              <canvas id="monthlyExpensesChart"></canvas>
-            </div>
-          </div>
-
-          <!-- Category Doughnut Chart -->
-          <div class="glass-panel chart-card">
-            <div class="chart-header">
-              <div>
-                <h3 style="font-size: 1.1rem;">Category Allocation</h3>
-                <small class="text-muted">Volume breakdown by expense category</small>
-              </div>
-              <span class="category-pill"><i class="fa-solid fa-chart-pie"></i> Doughnut</span>
-            </div>
-            <div class="chart-container-box">
-              <canvas id="categoryDoughnutChart"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <!-- Bar Chart: Category Audit Volume vs AI Flags -->
-        <div class="glass-panel chart-card">
-          <div class="chart-header">
-            <div>
-              <h3 style="font-size: 1.1rem;">Category Anomaly Distribution</h3>
-              <small class="text-muted">Total claims submitted vs claims flagged by AI per category</small>
-            </div>
-            <span class="category-pill"><i class="fa-solid fa-chart-column"></i> Category Bar</span>
-          </div>
-          <div class="chart-container-box" style="min-height: 220px;">
-            <canvas id="categoryRiskBarChart"></canvas>
-          </div>
-        </div>
-
-        <!-- Section 4: High-Risk Alerts Panel -->
-        <section id="alerts-section" class="glass-panel alerts-card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span id="alerts-pulse-dot" class="pulse-dot"></span>
-              <h3 style="font-size: 1.15rem;">Live Fraud Alerts</h3>
-              <span id="alerts-count-badge" class="risk-badge badge-high">0</span>
-            </div>
-            <small class="text-muted">High-risk transactions flagged by autonomous engine</small>
-          </div>
-
-          <div id="alerts-container" class="alerts-list">
-            <div class="text-center py-6 text-muted">
-              <i class="fa-solid fa-spinner fa-spin"></i> Checking alerts...
-            </div>
-          </div>
-        </section>
-
-        <!-- Section 5: Transactions Table with Live Filters -->
+        <!-- Section 4: Transactions Table with Live Filters -->
         <section id="transactions-section" class="glass-panel table-card">
           <div class="table-toolbar">
             <div>
-              <h3 style="font-size: 1.15rem;">Corporate Audited Transactions</h3>
+              <h3 id="transactions-table-title" style="font-size: 1.15rem;">Corporate Audited Transactions</h3>
               <small class="text-muted" id="table-count-badge">Loading records...</small>
             </div>
 
             <div class="table-filters">
-              <!-- Filter by Category -->
               <select id="filter-category" class="filter-select">
                 <option value="all">All Categories</option>
                 <option value="Travel">Travel</option>
@@ -405,7 +397,6 @@
                 <option value="Consulting">Consulting</option>
               </select>
 
-              <!-- Filter by Risk Level -->
               <select id="filter-risk" class="filter-select">
                 <option value="all">All Risk Levels</option>
                 <option value="High">High Risk (60+)</option>
@@ -413,7 +404,6 @@
                 <option value="Low">Low Risk (0-29)</option>
               </select>
 
-              <!-- Search Input -->
               <div class="filter-search-box">
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input type="text" id="table-search" placeholder="Search employee, ID, notes...">
@@ -431,14 +421,14 @@
                   <th>Date & Time</th>
                   <th class="text-right">Amount</th>
                   <th>Risk Score</th>
-                  <th>Status</th>
-                  <th class="text-center">Actions</th>
+                  <th>Status & Chain</th>
+                  <th class="text-center">Action</th>
                 </tr>
               </thead>
               <tbody id="expenses-tbody">
                 <tr>
                   <td colspan="8" class="text-center py-6 text-muted">
-                    <i class="fa-solid fa-spinner fa-spin"></i> Fetching transactions...
+                    <i class="fa-solid fa-spinner fa-spin"></i> Fetching records from database...
                   </td>
                 </tr>
               </tbody>
@@ -446,7 +436,178 @@
           </div>
         </section>
 
+        <!-- Section 5: High-Risk Alerts Panel (Auditor & Admin) -->
+        <section id="alerts-section" class="glass-panel alerts-card" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span id="alerts-pulse-dot" class="pulse-dot"></span>
+              <h3 style="font-size: 1.15rem;">Live Fraud Alerts</h3>
+              <span id="alerts-count-badge" class="risk-badge badge-high">0</span>
+            </div>
+            <small class="text-muted">High-risk transactions flagged by autonomous engine</small>
+          </div>
+
+          <div id="alerts-container" class="alerts-list">
+            <div class="text-center py-6 text-muted">
+              <i class="fa-solid fa-spinner fa-spin"></i> Checking alerts...
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 6: Visual Analytics Charts -->
+        <section id="analytics-section" class="charts-grid">
+          <div class="glass-panel chart-card">
+            <div class="chart-header">
+              <div>
+                <h3 style="font-size: 1.1rem;">Expense Trajectory vs Flagged Losses</h3>
+                <small class="text-muted">Monthly trendline of corporate expenditure vs fraud risk</small>
+              </div>
+              <span class="category-pill"><i class="fa-solid fa-chart-line"></i> Chart.js</span>
+            </div>
+            <div class="chart-container-box">
+              <canvas id="monthlyExpensesChart"></canvas>
+            </div>
+          </div>
+
+          <div class="glass-panel chart-card">
+            <div class="chart-header">
+              <div>
+                <h3 style="font-size: 1.1rem;">Category Allocation</h3>
+                <small class="text-muted">Volume breakdown by expense category</small>
+              </div>
+              <span class="category-pill"><i class="fa-solid fa-chart-pie"></i> Doughnut</span>
+            </div>
+            <div class="chart-container-box">
+              <canvas id="categoryDoughnutChart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Bar Chart: Category Volume vs Flagged -->
+        <div class="glass-panel chart-card">
+          <div class="chart-header">
+            <div>
+              <h3 style="font-size: 1.1rem;">Category Anomaly Distribution</h3>
+              <small class="text-muted">Total claims submitted vs claims flagged by AI per category</small>
+            </div>
+            <span class="category-pill"><i class="fa-solid fa-chart-column"></i> Category Bar</span>
+          </div>
+          <div class="chart-container-box" style="min-height: 220px;">
+            <canvas id="categoryRiskBarChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Section 7: Append-Only Audit Trail (Auditor & Admin) -->
+        <section id="audit-trail-section" class="glass-panel table-card" style="display: none;">
+          <div class="table-toolbar">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div class="brand-icon-box" style="width: 34px; height: 34px;">
+                <i class="fa-solid fa-receipt"></i>
+              </div>
+              <div>
+                <h3 style="font-size: 1.15rem;">Append-Only Compliance Audit Trail</h3>
+                <small class="text-muted">Immutable forensic event logs for all system activities</small>
+              </div>
+            </div>
+
+            <div class="table-filters">
+              <select id="filter-audit-action" class="filter-select">
+                <option value="all">All Actions</option>
+                <option value="LOGIN">LOGIN</option>
+                <option value="SUBMIT_EXPENSE">SUBMIT_EXPENSE</option>
+                <option value="RECEIPT_UPLOAD">RECEIPT_UPLOAD</option>
+                <option value="APPROVE_EXPENSE">APPROVE_EXPENSE</option>
+                <option value="REJECT_EXPENSE">REJECT_EXPENSE</option>
+                <option value="STATUS_CHANGE">STATUS_CHANGE</option>
+                <option value="AI_ASSISTANT_QUERY">AI_ASSISTANT_QUERY</option>
+                <option value="EMAIL_NOTIFICATION">EMAIL_NOTIFICATION</option>
+              </select>
+
+              <button id="btn-export-audit-csv" class="btn btn-secondary btn-sm">
+                <i class="fa-solid fa-file-csv"></i> Export CSV
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>User & Role</th>
+                  <th>Action</th>
+                  <th>Entity</th>
+                  <th>Details</th>
+                  <th>IP Address</th>
+                </tr>
+              </thead>
+              <tbody id="audit-logs-tbody">
+                <tr>
+                  <td colspan="6" class="text-center py-6 text-muted">Loading audit logs...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
       </main>
+    </div>
+  </div>
+
+  <!-- Modal: Expense Details & Workflow Review -->
+  <div id="expense-details-modal" class="modal-backdrop" style="display: none;">
+    <div class="glass-panel modal-card">
+      <button class="modal-close-btn" onclick="closeExpenseDetailsModal()">&times;</button>
+      <div id="expense-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Feature 8: "Ask AuditAI" Floating Chat Widget -->
+  <div id="assistant-widget-container" style="display: none;">
+    <!-- Floating Action Button -->
+    <button id="btn-assistant-toggle" class="assistant-fab" title="Ask AuditAI Natural-Language Assistant">
+      <i class="fa-solid fa-wand-magic-sparkles"></i>
+    </button>
+
+    <!-- Slide-in Chat Panel -->
+    <div id="assistant-panel" class="assistant-panel">
+      <div class="assistant-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="brand-icon-box" style="width: 28px; height: 28px; font-size: 0.8rem;">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <div>
+            <strong style="font-size: 0.9rem;">Ask AuditAI</strong>
+            <small class="text-muted block text-xs">AI Compliance Assistant</small>
+          </div>
+        </div>
+        <button id="btn-assistant-close" class="toast-close">&times;</button>
+      </div>
+
+      <!-- Messages Stream -->
+      <div id="assistant-messages" class="assistant-messages">
+        <div class="chat-message bot">
+          <div class="msg-avatar"><i class="fa-solid fa-shield-halved"></i></div>
+          <div class="msg-bubble">
+            Hello! I am AuditAI's compliance assistant. Ask me questions about expense trends, flagged claims, or department spending.
+          </div>
+        </div>
+      </div>
+
+      <!-- Suggested Question Chips -->
+      <div class="assistant-chips">
+        <button type="button" class="assistant-chip">"Show high-risk travel claims last month"</button>
+        <button type="button" class="assistant-chip">"Which employee has the most flagged expenses?"</button>
+        <button type="button" class="assistant-chip">"How much was rejected this week?"</button>
+      </div>
+
+      <!-- Input Box -->
+      <div class="assistant-input-box">
+        <input type="text" id="assistant-input" placeholder="Ask a compliance question...">
+        <button type="button" id="btn-assistant-send" class="btn-send">
+          <i class="fa-solid fa-arrow-up"></i>
+        </button>
+      </div>
     </div>
   </div>
 

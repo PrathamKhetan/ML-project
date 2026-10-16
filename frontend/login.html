@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AuditAI Login – Secure Role-Based Access for Employee, Manager, Auditor, and Admin portals.">
+  <title>Login – AuditAI Platform</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Core Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    .login-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      padding: 36px 32px;
+      position: relative;
+      z-index: 2;
+    }
+    .demo-accounts-box {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .demo-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      cursor: pointer;
+      text-align: left;
+      transition: all var(--transition-fast);
+      display: flex;
+      flex-direction: column;
+    }
+    .demo-btn strong {
+      color: #fff;
+      font-size: 0.8rem;
+    }
+    .demo-btn:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: var(--primary);
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading Bar Indicator -->
+  <div id="global-loader"></div>
+
+  <div class="login-container">
+    <div class="hero-glow-blob hero-glow-1"></div>
+    <div class="hero-glow-blob hero-glow-2"></div>
+
+    <div class="glass-panel login-card">
+      <div style="text-align: center; margin-bottom: 26px;">
+        <a href="index.html" class="brand-logo" style="justify-content: center; margin-bottom: 12px;">
+          <div class="brand-icon-box">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <span>Audit<span class="text-gradient">AI</span></span>
+        </a>
+        <h2 style="font-size: 1.4rem; margin-bottom: 4px;">Sign In to Portal</h2>
+        <p class="text-muted text-sm">Role-Based Access Control & Real-Time Fraud Defense</p>
+      </div>
+
+      <form id="login-form">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label for="login-email">Email Address</label>
+          <div style="position: relative;">
+            <input type="email" id="login-email" class="form-control" placeholder="e.g. auditor@auditai.com" required style="padding-left: 38px;">
+            <i class="fa-solid fa-envelope text-muted" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 0.85rem;"></i>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 22px;">
+          <label for="login-password">Password</label>
+          <div style="position: relative;">
+            <input type="password" id="login-password" class="form-control" placeholder="••••••••" required style="padding-left: 38px;">
+            <i class="fa-solid fa-lock text-muted" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 0.85rem;"></i>
+          </div>
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="btn btn-primary" style="width: 100%; padding: 12px;">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          <span>Sign In</span>
+        </button>
+      </form>
+
+      <!-- Demo Accounts 1-Click Fill -->
+      <div class="demo-accounts-box">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="text-xs text-muted uppercase font-semibold" style="letter-spacing: 0.5px;">Demo Accounts (Demo@123):</span>
+          <span class="brand-badge" style="font-size: 0.65rem;">1-Click</span>
+        </div>
+
+        <div class="demo-grid">
+          <button type="button" class="demo-btn" data-email="employee@auditai.com" data-role="employee">
+            <strong>Employee</strong>
+            <span>Sarah (Submit & Receipts)</span>
+          </button>
+          <button type="button" class="demo-btn" data-email="manager@auditai.com" data-role="manager">
+            <strong>Manager</strong>
+            <span>David (1st-Level Review)</span>
+          </button>
+          <button type="button" class="demo-btn" data-email="auditor@auditai.com" data-role="auditor">
+            <strong>Auditor</strong>
+            <span>Alex (Full Risk & Logs)</span>
+          </button>
+          <button type="button" class="demo-btn" data-email="admin@auditai.com" data-role="admin">
+            <strong>Admin</strong>
+            <span>Marcus (Users & Budgets)</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin-top: 20px;">
+        <a href="index.html" class="text-xs text-muted" style="text-decoration: none;">
+          <i class="fa-solid fa-arrow-left"></i> Back to Landing Page
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/animations.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // If already logged in, redirect to dashboard
+      const existingToken = localStorage.getItem('auditai_token');
+      if (existingToken) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
+
+      // 1-Click Demo Accounts
+      document.querySelectorAll('.demo-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('login-email').value = btn.dataset.email;
+          document.getElementById('login-password').value = 'Demo@123';
+          showToast(`Loaded ${btn.dataset.role.toUpperCase()} credentials`, 'info', 2000);
+        });
+      });
+
+      // Handle Login Submit
+      const form = document.getElementById('login-form');
+      const submitBtn = document.getElementById('btn-login-submit');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
+
+        try {
+          const res = await API.login(email, password);
+          showToast(`Welcome back, ${res.user.name} (${res.user.role.toUpperCase()})!`, 'success');
+          setTimeout(() => {
+            window.location.href = 'dashboard.html';
+          }, 600);
+        } catch (err) {
+          showToast(err.message || 'Login failed. Please check credentials.', 'error');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> <span>Sign In</span>';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

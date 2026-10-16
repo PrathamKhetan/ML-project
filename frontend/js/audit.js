@@ -1,12 +1,20 @@
 /**
- * AuditAI - Live Expense Audit & Risk Engine Integration
- * Handles new expense submission, AI heuristic analysis loader,
- * circular risk gauge visualization, and instant dashboard synchronization.
+ * AuditAI - Live Expense Audit, Receipt OCR & Risk Engine Integration
+ * Supports client-side Tesseract.js OCR, SHA-256 receipt hashing via Web Crypto,
+ * automated field extraction, and instant dashboard synchronization.
  */
+
+let receiptState = {
+  hash: null,
+  ocrAmount: null,
+  ocrText: null,
+  ocrVendor: null
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   setupAuditForm();
   setupQuickPresets();
+  setupReceiptUpload();
   setDefaultDateTime();
 });
 
@@ -30,6 +38,166 @@ function setDefaultDateTime() {
 }
 
 /**
+ * Compute SHA-256 Hash of File in Browser using Web Crypto API
+ */
+async function computeFileHash(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Setup Receipt Image Upload, Preview, and In-Browser Tesseract OCR
+ */
+function setupReceiptUpload() {
+  const fileInput = document.getElementById('audit-receipt-file');
+  const previewContainer = document.getElementById('receipt-preview-container');
+  const previewImg = document.getElementById('receipt-preview-img');
+  const ocrProgressBox = document.getElementById('ocr-progress-box');
+  const ocrProgressBar = document.getElementById('ocr-progress-bar');
+  const ocrStatusText = document.getElementById('ocr-status-text');
+  const removeBtn = document.getElementById('btn-remove-receipt');
+
+  if (!fileInput) return;
+
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Max 5 MB validation
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Receipt file size exceeds 5 MB limit.', 'error');
+      fileInput.value = '';
+      return;
+    }
+
+    // Show Image Preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (previewImg) previewImg.src = event.target.result;
+      if (previewContainer) previewContainer.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+
+    // Compute SHA-256 Hash
+    try {
+      receiptState.hash = await computeFileHash(file);
+      console.log('Receipt SHA-256 Hash:', receiptState.hash);
+    } catch (hashErr) {
+      console.warn('Could not compute file hash:', hashErr);
+    }
+
+    // Run In-Browser OCR with Tesseract.js (if available via CDN)
+    if (typeof Tesseract !== 'undefined') {
+      if (ocrProgressBox) ocrProgressBox.style.display = 'block';
+      if (ocrStatusText) ocrStatusText.textContent = 'Initializing OCR engine...';
+
+      try {
+        const result = await Tesseract.recognize(file, 'eng', {
+          logger: (m) => {
+            if (m.status === 'recognizing text' && ocrProgressBar) {
+              const pct = Math.round(m.progress * 100);
+              ocrProgressBar.style.width = `${pct}%`;
+              if (ocrStatusText) ocrStatusText.textContent = `Scanning receipt text (${pct}%)...`;
+            }
+          }
+        });
+
+        const text = result.data.text || '';
+        receiptState.ocrText = text.slice(0, 500);
+
+        // Parse OCR text using regex
+        parseAndAutofillReceipt(text);
+
+        if (ocrStatusText) ocrStatusText.textContent = 'Receipt scanned! Fields auto-filled below.';
+        showToast('Receipt scanned via Tesseract OCR! Form fields updated.', 'success');
+      } catch (ocrErr) {
+        console.warn('Tesseract OCR error:', ocrErr);
+        if (ocrStatusText) ocrStatusText.textContent = 'OCR completed with manual review.';
+      } finally {
+        setTimeout(() => {
+          if (ocrProgressBox) ocrProgressBox.style.display = 'none';
+        }, 2500);
+      }
+    }
+  });
+
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      if (fileInput) fileInput.value = '';
+      if (previewContainer) previewContainer.style.display = 'none';
+      if (previewImg) previewImg.src = '';
+      receiptState = { hash: null, ocrAmount: null, ocrText: null, ocrVendor: null };
+      showToast('Receipt cleared', 'info');
+    });
+  }
+}
+
+/**
+ * Regex parser for receipt text: Total amount, Date, and Vendor
+ */
+function parseAndAutofillReceipt(text) {
+  if (!text) return;
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+
+  // 1. Vendor: First plausible non-empty line
+  if (lines.length > 0) {
+    const rawVendor = lines[0].replace(/[^a-zA-Z0-9\s&.,-]/g, '').slice(0, 50);
+    if (rawVendor.length > 2) {
+      receiptState.ocrVendor = rawVendor;
+      const descInput = document.getElementById('audit-description');
+      if (descInput && !descInput.value) {
+        descInput.value = `Purchase at ${rawVendor}`;
+      }
+    }
+  }
+
+  // 2. Amount: Look for "total", "amount", "due", "balance", or currency figures
+  const amountRegex = /(?:total|amount|due|balance|net|sum|usd|\$)\s*[:\$€£]?\s*([0-9]+[.,][0-9]{2})/i;
+  const matchAmount = text.match(amountRegex);
+
+  if (matchAmount && matchAmount[1]) {
+    const parsed = parseFloat(matchAmount[1].replace(',', '.'));
+    if (!isNaN(parsed) && parsed > 0) {
+      receiptState.ocrAmount = parsed;
+      const amountInput = document.getElementById('audit-amount');
+      if (amountInput) amountInput.value = parsed.toFixed(2);
+    }
+  } else {
+    // Fallback: look for general price pattern on last few lines
+    const generalPriceRegex = /\$?\s*([0-9]+\.[0-9]{2})\b/g;
+    let match;
+    let highestAmount = 0;
+    while ((match = generalPriceRegex.exec(text)) !== null) {
+      const val = parseFloat(match[1]);
+      if (val > highestAmount && val < 100000) highestAmount = val;
+    }
+    if (highestAmount > 0) {
+      receiptState.ocrAmount = highestAmount;
+      const amountInput = document.getElementById('audit-amount');
+      if (amountInput) amountInput.value = highestAmount.toFixed(2);
+    }
+  }
+
+  // 3. Date: Match YYYY-MM-DD or MM/DD/YYYY or DD-MM-YYYY
+  const dateRegex = /\b(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b/;
+  const matchDate = text.match(dateRegex);
+  if (matchDate && matchDate[1]) {
+    try {
+      const parsedDate = new Date(matchDate[1]);
+      if (!isNaN(parsedDate.getTime())) {
+        const dateInput = document.getElementById('audit-date');
+        if (dateInput) dateInput.value = parsedDate.toISOString().split('T')[0];
+      }
+    } catch {
+      // Ignore invalid date
+    }
+  }
+}
+
+/**
  * Setup Quick-Fill Presets for Live Testing & Presentations
  */
 function setupQuickPresets() {
@@ -42,7 +210,7 @@ function setupQuickPresets() {
       department: 'Engineering',
       category: 'Meals & Entertainment',
       amount: 145.50,
-      description: 'Team sprint celebration lunch with itemized receipt',
+      description: 'Team sprint retrospective lunch with verified receipt',
       date: '2026-10-14',
       time: '12:30'
     },
@@ -61,16 +229,16 @@ function setupQuickPresets() {
       category: 'Equipment',
       amount: 16500,
       description: 'Executive portable workstation setup & audio monitors',
-      date: '2026-10-18', // Sunday
+      date: '2026-10-18',
       time: '23:45'
     },
     oddtime: {
       employee: 'David Chen',
-      department: 'Consulting',
+      department: 'Engineering',
       category: 'Consulting',
       amount: 5000,
       description: 'Emergency offshore architectural consulting advisory',
-      date: '2026-10-17', // Saturday
+      date: '2026-10-17',
       time: '02:15'
     }
   };
@@ -90,7 +258,7 @@ function setupQuickPresets() {
       document.getElementById('audit-date').value = data.date;
       document.getElementById('audit-time').value = data.time;
 
-      showToast(`Loaded ${presetKey.toUpperCase()} test scenario`, 'info', 2500);
+      showToast(`Loaded ${presetKey.toUpperCase()} scenario`, 'info', 2000);
     });
   });
 }
@@ -109,7 +277,6 @@ function setupAuditForm() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // Extract form fields
     const employee = document.getElementById('audit-employee').value.trim();
     const department = document.getElementById('audit-department').value;
     const category = document.getElementById('audit-category').value;
@@ -123,54 +290,55 @@ function setupAuditForm() {
       return;
     }
 
-    // UI Feedback: "AI Analyzing..." state
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.innerHTML = `
-        <i class="fa-solid fa-brain-circuit fa-spin"></i>
-        <span>AI Heuristic Engine Analyzing...</span>
+        <i class="fa-solid fa-brain fa-spin"></i>
+        <span>AI Risk Engine Analyzing...</span>
       `;
     }
 
-    // Temporary simulated processing pulse
-    if (resultCard) {
-      resultCard.classList.add('analyzing');
-    }
+    if (resultCard) resultCard.classList.add('analyzing');
 
     try {
-      // Send to Backend Risk Engine API
-      const evaluatedExpense = await API.createExpense({
+      const payload = {
         employee,
         department,
         category,
         amount,
         date,
         time,
-        description
-      });
+        description,
+        receiptHash: receiptState.hash,
+        ocrAmount: receiptState.ocrAmount,
+        ocrText: receiptState.ocrText,
+        ocrVendor: receiptState.ocrVendor
+      };
 
-      // Display Results Card
+      const evaluatedExpense = await API.createExpense(payload);
+
       if (emptyState) emptyState.style.display = 'none';
       if (resultCard) {
         resultCard.style.display = 'block';
         resultCard.classList.remove('analyzing');
       }
 
-      // Populate Result Card
       renderAuditResult(evaluatedExpense);
 
-      showToast(`Expense audited: Risk Score ${evaluatedExpense.riskScore}/100 (${evaluatedExpense.riskLevel})`, 
-        evaluatedExpense.riskLevel === 'High' ? 'error' : evaluatedExpense.riskLevel === 'Medium' ? 'warning' : 'success'
-      );
+      const toastType = evaluatedExpense.riskLevel === 'High' ? 'error' : evaluatedExpense.riskLevel === 'Medium' ? 'warning' : 'success';
+      showToast(`Expense audited: Risk Score ${evaluatedExpense.riskScore}/100 (${evaluatedExpense.riskLevel})`, toastType);
 
-      // Refresh Dashboard stats, table, and charts automatically without page reload
+      // Refresh dashboard tables and charts
       if (typeof loadDashboardData === 'function') {
         loadDashboardData();
       }
 
-      // Reset form fields lightly (retain date/time for convenience)
-      document.getElementById('audit-amount').value = '';
-      document.getElementById('audit-description').value = '';
+      // Reset receipt state
+      receiptState = { hash: null, ocrAmount: null, ocrText: null, ocrVendor: null };
+      const previewContainer = document.getElementById('receipt-preview-container');
+      if (previewContainer) previewContainer.style.display = 'none';
+      const fileInput = document.getElementById('audit-receipt-file');
+      if (fileInput) fileInput.value = '';
 
     } catch (error) {
       showToast(`Audit failed: ${error.message}`, 'error');
@@ -190,10 +358,10 @@ function setupAuditForm() {
  * Render Evaluated Result with Animated SVG Gauge & Reasons List
  */
 function renderAuditResult(expense) {
-  // Animate Circular Gauge
-  animateGauge(expense.riskScore, expense.riskLevel);
+  if (typeof animateGauge === 'function') {
+    animateGauge(expense.riskScore, expense.riskLevel);
+  }
 
-  // Set ID and summary
   const summaryEl = document.getElementById('result-summary-text');
   if (summaryEl) {
     summaryEl.innerHTML = `
@@ -202,23 +370,19 @@ function renderAuditResult(expense) {
     `;
   }
 
-  // Set status pill
   const statusEl = document.getElementById('result-status-pill');
   if (statusEl) {
-    const statusClass = expense.status === 'flagged' ? 'status-flagged' :
-                        expense.status === 'approved' ? 'status-approved' : 'status-pending';
-    statusEl.className = `status-badge ${statusClass}`;
-    statusEl.textContent = `Status: ${expense.status.toUpperCase()}`;
+    statusEl.className = `status-badge status-${expense.status.toLowerCase()}`;
+    statusEl.textContent = `Status: ${expense.status.toUpperCase()} (${expense.currentLevel})`;
   }
 
-  // Populate itemized reasons
   const reasonsList = document.getElementById('result-reasons-list');
   if (reasonsList) {
     if (!expense.reasons || expense.reasons.length === 0) {
       reasonsList.innerHTML = `<li class="reason-item text-success"><i class="fa-solid fa-circle-check"></i> Standard verified corporate expenditure.</li>`;
     } else {
       reasonsList.innerHTML = expense.reasons.map(reason => {
-        const isWarning = reason.includes('+50') || reason.includes('+30') || reason.includes('+25');
+        const isWarning = reason.includes('+50') || reason.includes('+40') || reason.includes('+35') || reason.includes('+30') || reason.includes('+25');
         const iconClass = isWarning ? 'fa-solid fa-triangle-exclamation text-danger' : 'fa-solid fa-info-circle text-warning';
         return `
           <li class="reason-item">
@@ -230,14 +394,18 @@ function renderAuditResult(expense) {
     }
   }
 
-  // Quick Action Buttons inside result card
-  const btnApprove = document.getElementById('btn-result-approve');
-  const btnReject = document.getElementById('btn-result-reject');
-
-  if (btnApprove) {
-    btnApprove.onclick = () => handleExpenseStatus(expense.id, 'approved');
-  }
-  if (btnReject) {
-    btnReject.onclick = () => handleExpenseStatus(expense.id, 'rejected');
+  // Stepper preview inside result card
+  const stepperContainer = document.getElementById('result-stepper-container');
+  if (stepperContainer && expense.requiredLevels) {
+    stepperContainer.innerHTML = `
+      <div class="approval-stepper" style="margin-top: 14px;">
+        ${expense.requiredLevels.map(lvl => {
+          const isDone = expense.approvals && expense.approvals.some(a => a.level === lvl && a.action === 'Approved');
+          const isCurrent = expense.currentLevel === lvl;
+          const cls = isDone ? 'step-done' : isCurrent ? 'step-current' : 'step-pending';
+          return `<div class="step-pill ${cls}"><i class="fa-solid ${isDone ? 'fa-check' : 'fa-circle-dot'}"></i> ${lvl}</div>`;
+        }).join('<span class="step-arrow">&rarr;</span>')}
+      </div>
+    `;
   }
 }

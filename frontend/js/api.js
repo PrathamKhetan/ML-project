@@ -1,23 +1,27 @@
 /**
  * AuditAI - API Service Layer
- * Centralizes all fetch calls with loading indicators, error handling,
+ * Centralizes all fetch calls with JWT authorization, error handling,
  * and cold-start detection for Render free-tier hosting.
  */
 
 const API = {
   /**
-   * Core HTTP request handler
+   * Core HTTP request handler with automatic JWT Bearer token injection
    */
   async request(endpoint, options = {}) {
     const url = `${CONFIG.API_BASE_URL}${endpoint}`;
     
+    // Retrieve stored JWT token
+    const token = localStorage.getItem('auditai_token');
+
     // Default headers
     const headers = {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...(options.headers || {})
     };
 
-    // Show loading spinner if global spinner exists
+    // Show loading spinner
     const spinner = document.getElementById('global-loader');
     if (spinner) spinner.classList.add('active');
 
@@ -35,6 +39,16 @@ const API = {
         data = await response.text();
       }
 
+      // Handle 401 Unauthorized (Expired or invalid token)
+      if (response.status === 401 && !endpoint.includes('/auth/login')) {
+        localStorage.removeItem('auditai_token');
+        localStorage.removeItem('auditai_user');
+        if (!window.location.pathname.endsWith('login.html')) {
+          window.location.href = 'login.html';
+        }
+        throw new Error((data && data.message) || 'Session expired. Please log in again.');
+      }
+
       if (!response.ok) {
         const errorMsg = (data && data.message) || (data && data.error) || `Request failed (${response.status})`;
         throw new Error(errorMsg);
@@ -44,11 +58,10 @@ const API = {
     } catch (error) {
       console.error(`API Error on ${endpoint}:`, error);
 
-      // Display friendly error modal or toast
       if (typeof showToast === 'function') {
-        const isColdStart = error.message.includes('Failed to fetch') || error.message.includes('NetworkError');
+        const isColdStart = error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Load failed');
         const userNotice = isColdStart
-          ? 'Backend is waking up (Render free tier takes ~30s on cold start). Please retry in a moment.'
+          ? 'Backend is waking up (Render free tier takes ~30s on cold start). Please wait a moment and retry.'
           : error.message;
         showToast(userNotice, 'error');
       }
@@ -59,16 +72,56 @@ const API = {
     }
   },
 
-  /**
-   * Health Check
-   */
+  /* ==========================================================================
+     AUTHENTICATION & USER METHODS
+     ========================================================================== */
+
+  async login(email, password) {
+    const res = await this.request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+
+    if (res.token) {
+      localStorage.setItem('auditai_token', res.token);
+      localStorage.setItem('auditai_user', JSON.stringify(res.user));
+    }
+    return res;
+  },
+
+  async getMe() {
+    return this.request('/api/auth/me');
+  },
+
+  logout() {
+    localStorage.removeItem('auditai_token');
+    localStorage.removeItem('auditai_user');
+    window.location.href = 'login.html';
+  },
+
+  getCurrentUser() {
+    try {
+      return JSON.parse(localStorage.getItem('auditai_user') || 'null');
+    } catch {
+      return null;
+    }
+  },
+
+  async createUser(userData) {
+    return this.request('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    });
+  },
+
+  /* ==========================================================================
+     EXPENSE & ANALYTICS METHODS
+     ========================================================================== */
+
   async getHealth() {
     return this.request('/health');
   },
 
-  /**
-   * Fetch expenses list with optional filters
-   */
   async getExpenses({ category = 'all', risk = 'all', search = '' } = {}) {
     const params = new URLSearchParams();
     if (category && category !== 'all') params.append('category', category);
@@ -79,37 +132,22 @@ const API = {
     return this.request(`/api/expenses${qs}`);
   },
 
-  /**
-   * Fetch aggregate stats (total, flagged, avg risk, savings)
-   */
   async getStats() {
     return this.request('/api/stats');
   },
 
-  /**
-   * Fetch monthly spending and flagged losses for Line Chart
-   */
   async getMonthlyStats() {
     return this.request('/api/stats/monthly');
   },
 
-  /**
-   * Fetch category breakdown for Doughnut Chart
-   */
   async getCategoryStats() {
     return this.request('/api/stats/categories');
   },
 
-  /**
-   * Fetch high-risk alerts
-   */
   async getAlerts() {
     return this.request('/api/alerts');
   },
 
-  /**
-   * Submit new expense for real-time AI risk evaluation
-   */
   async createExpense(expenseData) {
     return this.request('/api/expenses', {
       method: 'POST',
@@ -117,13 +155,59 @@ const API = {
     });
   },
 
-  /**
-   * Update expense approval status (approved / rejected / flagged)
-   */
+  /* ==========================================================================
+     MULTI-LEVEL APPROVAL WORKFLOW METHODS
+     ========================================================================== */
+
+  async getPendingApprovals() {
+    return this.request('/api/approvals/pending');
+  },
+
+  async approveExpense(id, comment = '') {
+    return this.request(`/api/expenses/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ comment })
+    });
+  },
+
+  async rejectExpense(id, comment) {
+    return this.request(`/api/expenses/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ comment })
+    });
+  },
+
   async updateExpenseStatus(id, status) {
     return this.request(`/api/expenses/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status })
+    });
+  },
+
+  /* ==========================================================================
+     AUDIT TRAIL LOGS
+     ========================================================================== */
+
+  async getAuditLogs({ user = '', action = 'all', from = '', to = '', page = 1, limit = 25 } = {}) {
+    const params = new URLSearchParams();
+    if (user) params.append('user', user);
+    if (action && action !== 'all') params.append('action', action);
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    params.append('page', page);
+    params.append('limit', limit);
+
+    return this.request(`/api/audit-logs?${params.toString()}`);
+  },
+
+  /* ==========================================================================
+     NATURAL LANGUAGE ASSISTANT ("ASK AUDITAI")
+     ========================================================================== */
+
+  async askAssistant(question) {
+    return this.request('/api/assistant', {
+      method: 'POST',
+      body: JSON.stringify({ question })
     });
   }
 };

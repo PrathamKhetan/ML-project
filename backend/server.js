@@ -1,12 +1,20 @@
 /**
  * AuditAI – AI Expense Audit & Fraud Detection Platform
- * Backend Server (Node.js + Express)
+ * Backend Server (Node.js + Express + MongoDB Atlas + Mongoose)
  */
 
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const { connectDB } = require('./config/db');
+
+// Route Handlers
+const authRoutes = require('./routes/auth');
 const expenseRoutes = require('./routes/expenses');
+const approvalRoutes = require('./routes/approvals');
+const auditLogRoutes = require('./routes/auditLogs');
+const assistantRoutes = require('./routes/assistant');
 
 const app = express();
 
@@ -14,79 +22,101 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const CLIENT_URL = process.env.CLIENT_URL || '*';
 
-// Middleware
+// Security Headers Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: false // Allow static assets & cross-origin API calls
+}));
+
+// CORS Configuration
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-    
-    // If CLIENT_URL is '*' or matches the origin, allow it
     if (CLIENT_URL === '*' || CLIENT_URL.split(',').map(u => u.trim()).includes(origin)) {
       return callback(null, true);
     }
-    
-    // In local development, allow localhost origins
     if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
       return callback(null, true);
     }
-
-    return callback(null, true); // Permissive for easy student evaluation and project grading
+    return callback(null, true); // Permissive for college evaluation
   },
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health Check Endpoint (Render requirement)
+// Health Check Endpoint (Required by Render & Uptime Monitors)
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    service: 'AuditAI Backend API',
+    service: 'AuditAI Enterprise Backend API',
+    database: require('mongoose').connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
 });
 
-// API Routes
+// Mount API Routes
+app.use('/api', authRoutes);
 app.use('/api', expenseRoutes);
+app.use('/api', approvalRoutes);
+app.use('/api', auditLogRoutes);
+app.use('/api', assistantRoutes);
 
-// Root fallback
+// Root Documentation Index
 app.get('/', (req, res) => {
   res.json({
-    message: 'AuditAI API is running. Visit /health for status or /api/expenses for data.',
-    docs: {
-      health: 'GET /health',
-      expenses: 'GET /api/expenses',
+    message: 'AuditAI Enterprise API is active.',
+    health: 'GET /health',
+    auth: {
+      login: 'POST /api/auth/login',
+      me: 'GET /api/auth/me',
+      users: 'GET/POST /api/users (Admin)'
+    },
+    expenses: {
+      list: 'GET /api/expenses',
       submit: 'POST /api/expenses',
       stats: 'GET /api/stats',
-      monthly: 'GET /api/stats/monthly',
-      categories: 'GET /api/stats/categories',
-      alerts: 'GET /api/alerts',
-      updateStatus: 'PATCH /api/expenses/:id/status'
-    }
+      approvals: 'GET /api/approvals/pending'
+    },
+    auditTrail: 'GET /api/audit-logs',
+    assistant: 'POST /api/assistant'
   });
 });
 
-// 404 Handler
+// 404 Route Handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found', message: `Route ${req.originalUrl} does not exist.` });
 });
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error('Unhandled Server Error:', err);
-  res.status(500).json({
+  console.error('Server Error:', err);
+  res.status(err.status || 500).json({
     error: 'Internal Server Error',
     message: err.message || 'An unexpected error occurred.'
   });
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`===============================================`);
-  console.log(` AuditAI Backend running on port ${PORT}`);
-  console.log(` Health check: http://localhost:${PORT}/health`);
-  console.log(` API base:     http://localhost:${PORT}/api/expenses`);
-  console.log(` Allowed CORS: ${CLIENT_URL}`);
-  console.log(`===============================================`);
-});
+// Initialize Database and Start Server
+async function startServer() {
+  await connectDB();
+
+  // Auto-seed if database is empty on initial boot
+  try {
+    const { seedDatabase } = require('./data/seed');
+    await seedDatabase();
+  } catch (seedErr) {
+    console.log('Auto-seed check note:', seedErr.message);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`====================================================`);
+    console.log(` 🛡️ AuditAI Enterprise Backend running on port ${PORT}`);
+    console.log(` Health check: http://localhost:${PORT}/health`);
+    console.log(` API Base:     http://localhost:${PORT}/api`);
+    console.log(`====================================================`);
+  });
+}
+
+startServer();
