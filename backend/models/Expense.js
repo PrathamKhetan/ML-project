@@ -55,6 +55,11 @@ const expenseSchema = new mongoose.Schema({
     ref: 'User',
     index: true
   },
+  submittedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  },
   department: {
     type: String,
     required: true,

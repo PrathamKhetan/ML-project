@@ -17,29 +17,35 @@ const { sendStatusUpdateEmail } = require('../services/emailService');
 router.get('/approvals/pending', authenticate, authorizeRoles('manager', 'auditor', 'admin'), async (req, res) => {
   try {
     const userRole = req.user.role;
-    const userDept = req.user.department;
     const userId = req.user._id;
 
     const query = { status: 'Pending' };
 
     if (userRole === 'manager') {
+      // Manager reviews claims awaiting Manager approval across departments
       query.currentLevel = 'Manager';
-      // If manager has a specific department, filter to team; otherwise allow department or general
-      if (userDept && userDept !== 'General') {
-        query.department = userDept;
-      }
     } else if (userRole === 'auditor') {
-      query.currentLevel = 'Auditor';
+      // Auditor reviews claims awaiting Auditor review, OR any high-risk flagged claims
+      query.$or = [
+        { currentLevel: 'Auditor' },
+        { riskLevel: 'High' }
+      ];
     } else if (userRole === 'admin') {
-      query.currentLevel = 'Admin';
+      // Admin has executive visibility across all pending claims across all levels
     }
 
-    // Exclude own expenses from approval queue (cannot approve own expense)
-    query.userId = { $ne: userId };
+    const pendingExpenses = await Expense.find(query).sort({ riskScore: -1, date: -1 }).lean();
 
-    const pendingExpenses = await Expense.find(query).sort({ riskScore: -1, date: -1 });
+    // Attach isOwnClaim flag for UI peer review indicators
+    const mapped = pendingExpenses.map(item => ({
+      ...item,
+      isOwnClaim: Boolean(
+        (item.userId && item.userId.toString() === userId.toString()) ||
+        (item.submittedBy && item.submittedBy.toString() === userId.toString())
+      )
+    }));
 
-    res.json(pendingExpenses);
+    res.json(mapped);
   } catch (error) {
     res.status(500).json({ error: 'Server Error', message: error.message });
   }
@@ -70,11 +76,13 @@ router.post('/expenses/:id/approve', authenticate, authorizeRoles('manager', 'au
       });
     }
 
-    // Rule: Users cannot approve their own expense
-    if (expense.userId && expense.userId.toString() === user._id.toString()) {
+    // Rule: Users cannot approve their own expense (admin override permitted)
+    const isSelfClaim = (expense.userId && expense.userId.toString() === user._id.toString()) ||
+                        (expense.submittedBy && expense.submittedBy.toString() === user._id.toString());
+    if (isSelfClaim && user.role !== 'admin') {
       return res.status(403).json({
         error: 'Forbidden',
-        message: 'Conflict of interest: You cannot approve your own expense claim.'
+        message: 'Conflict of interest: You cannot approve your own expense claim. Peer review required.'
       });
     }
 
@@ -87,10 +95,13 @@ router.post('/expenses/:id/approve', authenticate, authorizeRoles('manager', 'au
     const expectedLevel = roleLevelMap[user.role];
 
     if (expense.currentLevel !== expectedLevel && user.role !== 'admin') {
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: `This expense requires review by a ${expense.currentLevel}. Current role: ${user.role}.`
-      });
+      const auditorCanAudit = user.role === 'auditor' && (expense.currentLevel === 'Auditor' || expense.riskLevel === 'High');
+      if (!auditorCanAudit) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: `This expense requires review by a ${expense.currentLevel}. Current role: ${user.role}.`
+        });
+      }
     }
 
     // Add approval record
@@ -181,11 +192,13 @@ router.post('/expenses/:id/reject', authenticate, authorizeRoles('manager', 'aud
       return res.status(404).json({ error: 'Not Found', message: `Expense ${id} was not found.` });
     }
 
-    // Rule: Users cannot reject their own expense
-    if (expense.userId && expense.userId.toString() === user._id.toString()) {
+    // Rule: Users cannot reject their own expense (admin override permitted)
+    const isSelfClaim = (expense.userId && expense.userId.toString() === user._id.toString()) ||
+                        (expense.submittedBy && expense.submittedBy.toString() === user._id.toString());
+    if (isSelfClaim && user.role !== 'admin') {
       return res.status(403).json({
         error: 'Forbidden',
-        message: 'Conflict of interest: You cannot review your own expense claim.'
+        message: 'Conflict of interest: You cannot review your own expense claim. Peer review required.'
       });
     }
 

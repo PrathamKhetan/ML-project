@@ -17,6 +17,7 @@ const assistantLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
   keyGenerator: (req) => (req.user ? String(req.user._id) : req.ip),
+  validate: { keyGeneratorIpFallback: false },
   message: {
     error: 'Too Many Requests',
     message: 'Assistant query rate limit reached (10 requests/min). Please wait a moment.'

@@ -423,13 +423,19 @@ async function loadPendingApprovals() {
               <div class="approval-stepper">${stepper}</div>
             </div>
 
-            <div style="display: flex; gap: 8px;">
-              <button class="btn btn-outline-danger btn-sm" onclick="promptRejectionModal('${item.id}')">
-                <i class="fa-solid fa-ban"></i> Reject
-              </button>
-              <button class="btn btn-primary btn-sm" onclick="promptApprovalModal('${item.id}')">
-                <i class="fa-solid fa-check"></i> Approve as ${dashboardState.currentUser.role.toUpperCase()}
-              </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              ${item.isOwnClaim && dashboardState.currentUser.role !== 'admin' ? `
+                <span class="badge-medium" style="padding: 6px 12px; font-size: 0.76rem; border-radius: var(--radius-sm); border: 1px dashed rgba(245, 158, 11, 0.4);">
+                  <i class="fa-solid fa-lock"></i> Your Claim · Peer Review Required
+                </span>
+              ` : `
+                <button class="btn btn-outline-danger btn-sm" onclick="promptRejectionModal('${item.id}')">
+                  <i class="fa-solid fa-ban"></i> Reject
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="promptApprovalModal('${item.id}')">
+                  <i class="fa-solid fa-check"></i> Approve as ${dashboardState.currentUser.role.toUpperCase()}
+                </button>
+              `}
             </div>
           </div>
         </div>

@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
 function setDefaultDateTime() {
   const dateInput = document.getElementById('audit-date');
   const timeInput = document.getElementById('audit-time');
+  const empInput = document.getElementById('audit-employee');
+  const deptInput = document.getElementById('audit-department');
   const now = new Date();
 
   if (dateInput && !dateInput.value) {
@@ -34,6 +36,16 @@ function setDefaultDateTime() {
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     timeInput.value = `${hours}:${minutes}`;
+  }
+
+  const currentUser = typeof API !== 'undefined' ? API.getCurrentUser() : null;
+  if (currentUser) {
+    if (empInput && !empInput.value && currentUser.name) {
+      empInput.value = currentUser.name;
+    }
+    if (deptInput && (!deptInput.value || deptInput.value === 'Engineering') && currentUser.department) {
+      deptInput.value = currentUser.department;
+    }
   }
 }
 
@@ -328,9 +340,22 @@ function setupAuditForm() {
       const toastType = evaluatedExpense.riskLevel === 'High' ? 'error' : evaluatedExpense.riskLevel === 'Medium' ? 'warning' : 'success';
       showToast(`Expense audited: Risk Score ${evaluatedExpense.riskScore}/100 (${evaluatedExpense.riskLevel})`, toastType);
 
-      // Refresh dashboard tables and charts
+      // Clear any active search or category filters so the new claim is immediately visible in the table
+      if (typeof dashboardState !== 'undefined') {
+        dashboardState.currentCategory = 'all';
+        dashboardState.currentRisk = 'all';
+        dashboardState.searchQuery = '';
+        const catFilter = document.getElementById('filter-category');
+        const riskFilter = document.getElementById('filter-risk');
+        const searchInput = document.getElementById('table-search');
+        if (catFilter) catFilter.value = 'all';
+        if (riskFilter) riskFilter.value = 'all';
+        if (searchInput) searchInput.value = '';
+      }
+
+      // Refresh dashboard tables, KPI stats, charts, and approvals queue
       if (typeof loadDashboardData === 'function') {
-        loadDashboardData();
+        await loadDashboardData();
       }
 
       // Reset receipt state

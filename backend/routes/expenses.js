@@ -12,29 +12,41 @@ const { authenticate, logAuditEvent } = require('../middleware/auth');
 const { sendHighRiskAlert } = require('../services/emailService');
 
 /**
+ * Helper to get role-based scoping filter.
+ * - Employee: view only their own claims (matched by userId, submittedBy, or employee name)
+ * - Manager, Auditor, Admin: view all expenses across departments
+ */
+function getRoleVisibilityQuery(user) {
+  if (user.role === 'employee') {
+    return {
+      $or: [
+        { userId: user._id },
+        { submittedBy: user._id },
+        { employee: new RegExp(`^${user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+      ]
+    };
+  }
+  return {};
+}
+
+/**
  * GET /api/expenses
  * Query Parameters:
  *  - category: Filter by category (e.g. Travel)
  *  - risk: Filter by risk level (Low, Medium, High)
+ *  - department: Filter by department (optional)
  *  - search: Search text
  */
 router.get('/expenses', authenticate, async (req, res) => {
   try {
-    const { category, risk, search } = req.query;
+    const { category, risk, search, department } = req.query;
     const user = req.user;
 
-    const query = {};
+    const query = getRoleVisibilityQuery(user);
 
-    // Role-based visibility scoping:
-    // - Employee: only view their own expenses
-    // - Manager: view their department/team expenses
-    // - Auditor & Admin: view all expenses
-    if (user.role === 'employee') {
-      query.$or = [{ userId: user._id }, { employee: user.name }];
-    } else if (user.role === 'manager') {
-      if (user.department && user.department !== 'General') {
-        query.department = user.department;
-      }
+    // Filter by Department (if explicitly requested)
+    if (department && department !== 'all') {
+      query.department = new RegExp(`^${department}$`, 'i');
     }
 
     // Filter by Category
@@ -116,9 +128,35 @@ router.post('/expenses', authenticate, async (req, res) => {
     // Fetch existing expenses for risk evaluation (duplicates, split transactions, category averages, behavioral history)
     const existingExpenses = await Expense.find().sort({ createdAt: -1 }).limit(200).lean();
 
-    // Generate unique ID
-    const totalCount = await Expense.countDocuments();
-    const newId = `EXP-${1001 + totalCount}`;
+    // Generate unique ID without collision risk
+    const lastExpense = await Expense.findOne({ id: /^EXP-\d+$/ })
+      .sort({ id: -1 })
+      .collation({ locale: 'en_US', numericOrdering: true })
+      .lean();
+    let nextNum = 1045;
+    if (lastExpense && lastExpense.id) {
+      const match = lastExpense.id.match(/^EXP-(\d+)$/);
+      if (match) {
+        nextNum = Math.max(nextNum, parseInt(match[1], 10) + 1);
+      }
+    }
+    while (await Expense.exists({ id: `EXP-${nextNum}` })) {
+      nextNum++;
+    }
+    const newId = `EXP-${nextNum}`;
+
+    // Associate target user if an existing user matches employee name/email
+    let targetUserId = user._id;
+    const escapedEmp = empName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matchedUser = await User.findOne({
+      $or: [
+        { name: new RegExp(`^${escapedEmp}$`, 'i') },
+        { email: new RegExp(`^${escapedEmp}$`, 'i') }
+      ]
+    }).lean();
+    if (matchedUser) {
+      targetUserId = matchedUser._id;
+    }
 
     const now = new Date();
     const formattedDate = date || now.toISOString().split('T')[0];
@@ -127,7 +165,8 @@ router.post('/expenses', authenticate, async (req, res) => {
     const expenseCandidate = {
       id: newId,
       employee: empName,
-      userId: user._id,
+      userId: targetUserId,
+      submittedBy: user._id,
       department: empDept,
       category: category.trim(),
       amount: parseFloat(amount),
@@ -218,13 +257,7 @@ router.post('/expenses', authenticate, async (req, res) => {
 router.get('/stats', authenticate, async (req, res) => {
   try {
     const user = req.user;
-    const query = {};
-
-    if (user.role === 'employee') {
-      query.$or = [{ userId: user._id }, { employee: user.name }];
-    } else if (user.role === 'manager' && user.department && user.department !== 'General') {
-      query.department = user.department;
-    }
+    const query = getRoleVisibilityQuery(user);
 
     const expenses = await Expense.find(query).lean();
 
@@ -268,13 +301,7 @@ router.get('/stats', authenticate, async (req, res) => {
 router.get('/stats/monthly', authenticate, async (req, res) => {
   try {
     const user = req.user;
-    const query = {};
-
-    if (user.role === 'employee') {
-      query.$or = [{ userId: user._id }, { employee: user.name }];
-    } else if (user.role === 'manager' && user.department && user.department !== 'General') {
-      query.department = user.department;
-    }
+    const query = getRoleVisibilityQuery(user);
 
     const expenses = await Expense.find(query).lean();
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -321,13 +348,7 @@ router.get('/stats/monthly', authenticate, async (req, res) => {
 router.get('/stats/categories', authenticate, async (req, res) => {
   try {
     const user = req.user;
-    const query = {};
-
-    if (user.role === 'employee') {
-      query.$or = [{ userId: user._id }, { employee: user.name }];
-    } else if (user.role === 'manager' && user.department && user.department !== 'General') {
-      query.department = user.department;
-    }
+    const query = getRoleVisibilityQuery(user);
 
     const expenses = await Expense.find(query).lean();
     const categoryMap = {};
