@@ -56,6 +56,17 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Database Readiness Guard for /api routes
+app.use('/api', (req, res, next) => {
+  if (require('mongoose').connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Database Disconnected',
+      message: 'MongoDB Atlas is not connected yet. Please add MONGODB_URI in your Render Environment Variables.'
+    });
+  }
+  next();
+});
+
 // Mount API Routes
 app.use('/api', authRoutes);
 app.use('/api', expenseRoutes);

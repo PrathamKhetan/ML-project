@@ -7,8 +7,8 @@
  */
 
 const CONFIG = {
-  // Actual live Render deployment URL
-  RENDER_BACKEND_URL: 'https://aiml-audit-project.onrender.com',
+  // Live Render deployment URL
+  RENDER_BACKEND_URL: 'https://ml-project-4g7a.onrender.com',
 
   // Dynamic API Base URL resolver
   get API_BASE_URL() {
